@@ -198,56 +198,37 @@
   }
 
   /* ---------- Easter egg ---------- */
+  /* Frames are driven from JS (runGlitch) so the effect is identical on every browser. */
   #glitch { position: fixed; inset: 0; z-index: 100; pointer-events: auto; overflow: hidden; }
+  #glitch .tears, #glitch .bars { position: absolute; inset: 0; pointer-events: none; }
+  #glitch .ghost, #glitch .slice { position: absolute; margin: 0; max-width: none; pointer-events: none; }
+  #glitch .slice { background: var(--bg); }
+  #glitch .ghost.red { filter: sepia(1) saturate(9) hue-rotate(-45deg); opacity: .55; mix-blend-mode: multiply; }
+  #glitch .ghost.cyan { filter: sepia(1) saturate(9) hue-rotate(150deg); opacity: .55; mix-blend-mode: multiply; }
+  @media (prefers-color-scheme: dark) { #glitch .ghost.red, #glitch .ghost.cyan { mix-blend-mode: screen; } }
+  #glitch .bars b { position: absolute; left: 0; right: 0; mix-blend-mode: difference; }
   #glitch .scan {
-    position: absolute; inset: 0;
-    background: repeating-linear-gradient(0deg, rgba(0,0,0,.28) 0 2px, transparent 2px 4px);
-    animation: scanMove .12s steps(2) infinite;
+    position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.32) 0 2px, transparent 2px 4px);
   }
-  #glitch .bars { position: absolute; inset: 0; }
-  #glitch .bars b {
-    position: absolute; left: 0; right: 0; height: 8px; mix-blend-mode: screen;
-    animation: barJump .18s steps(3) infinite;
-  }
+  #glitch .flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
   #glitch .face {
     position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
     justify-content: center; background: #0b0816; opacity: 0;
   }
-  #glitch.show-face .face { opacity: 1; animation: faceJitter .25s steps(2) infinite; }
-  #glitch.show-face .bars { opacity: .35; }
-  #glitch .face svg { width: min(62vw, 340px); height: auto; filter: drop-shadow(4px 0 rgba(255,0,60,.8)) drop-shadow(-4px 0 rgba(0,240,255,.8)); }
+  #glitch.show-face .face { opacity: 1; }
+  #glitch .face svg { width: min(62vw, 340px); height: auto; }
   #glitch .face .txt {
     font: 900 clamp(3rem, 20vw, 7rem)/1 ui-monospace, Menlo, Consolas, monospace; color: #fff; margin-top: 10px;
-    text-shadow: 4px 0 #ff003c, -4px 0 #00f0ff;
   }
-  html.glitching #app { animation: shake .09s linear infinite, rgbSplit .16s steps(2) infinite; }
-  @keyframes shake {
-    0% { transform: translate(0, 0); } 25% { transform: translate(-6px, 3px) skewX(2deg); }
-    50% { transform: translate(5px, -4px); } 75% { transform: translate(-3px, -2px) skewX(-3deg); }
-    100% { transform: translate(4px, 3px); }
-  }
-  @keyframes rgbSplit {
-    0% { filter: drop-shadow(5px 0 rgba(255,0,60,.85)) drop-shadow(-5px 0 rgba(0,240,255,.85)); }
-    50% { filter: drop-shadow(-7px 0 rgba(255,0,60,.85)) drop-shadow(7px 0 rgba(0,240,255,.85)) hue-rotate(90deg) contrast(1.6); }
-    100% { filter: invert(1) drop-shadow(3px 0 rgba(255,0,60,.85)); }
-  }
-  @keyframes scanMove { from { transform: translateY(0); } to { transform: translateY(4px); } }
-  @keyframes barJump {
-    0% { transform: translateX(-30px); opacity: .9; } 50% { transform: translateX(40px); opacity: .3; }
-    100% { transform: translateX(-10px); opacity: .8; }
-  }
-  @keyframes faceJitter { 0% { transform: translate(0,0); } 50% { transform: translate(-4px, 2px); } 100% { transform: translate(3px,-2px); } }
 
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
+    html:not(.force-motion) *, html:not(.force-motion) *::before, html:not(.force-motion) *::after {
+      animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important;
+    }
     .confetti { display: none; }
-    html.glitching #app { animation: none !important; }
-    #glitch .scan, #glitch .bars { display: none; }
-    #glitch { opacity: 0; transition: opacity .4s ease !important; }
-    #glitch.visible { opacity: 1; }
-    #glitch .face { opacity: 1; animation: none !important; }
-    #glitch .face svg { filter: none; }
-    #glitch .face .txt { text-shadow: none; }
+    html:not(.force-motion) #glitch { opacity: 0; transition: opacity .4s ease !important; }
+    html:not(.force-motion) #glitch.visible { opacity: 1; }
   }
 </style>
 </head>
@@ -359,7 +340,9 @@
 
 <!-- Easter egg -->
 <div id="glitch" hidden aria-hidden="true">
+  <div class="tears"></div>
   <div class="bars"></div>
+  <div class="flash"></div>
   <div class="face">
     <svg viewBox="0 0 200 200" aria-hidden="true">
       <circle cx="100" cy="100" r="92" fill="#ffd23f" stroke="#1f1a33" stroke-width="6"/>
@@ -802,30 +785,40 @@
   }
 
   /* ================= EASTER EGG ================= */
-  // Purely visual: only toggles classes on <html> and an overlay. Never reads or writes card state.
+  // Purely visual: moves/clones DOM for a few seconds on an overlay. Never reads or writes card state.
+  // ?glitch=1 forces it (normal 10–60s delay), ?glitch=now fires after 1.5s,
+  // ?glitch=full fires after 1.5s with the full effect even when reduced motion is on.
+  var glitchFlag = new URLSearchParams(location.search).get('glitch');
   function scheduleGlitch() {
-    var flag = new URLSearchParams(location.search).get('glitch');
-    var forced = flag === '1' || flag === 'now';
+    var forced = glitchFlag === '1' || glitchFlag === 'now' || glitchFlag === 'full';
     if (!forced && Math.random() >= 1 / 50) return;
-    var delay = flag === 'now' ? 1500 : 10000 + Math.random() * 50000;
+    var delay = (glitchFlag === 'now' || glitchFlag === 'full') ? 1500 : 10000 + Math.random() * 50000;
     setTimeout(runGlitch, delay);
   }
   var glitched = false;
   function runGlitch() {
     if (glitched) return;
     glitched = true;
-    var g = $('glitch'), root = document.documentElement;
-    var timers = [];
+    var g = $('glitch'), root = document.documentElement, app = $('app');
+    var tears = g.querySelector('.tears'), barsBox = g.querySelector('.bars'), flash = g.querySelector('.flash');
+    var face = g.querySelector('.face'), svg = face.querySelector('svg'), txt = face.querySelector('.txt');
+    var timers = [], frameTimer = null, full = !reduceMotion || glitchFlag === 'full';
     function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+    function rnd(a, b) { return a + Math.random() * (b - a); }
     function end() {
       timers.forEach(clearTimeout);
-      root.classList.remove('glitching');
+      clearInterval(frameTimer);
+      app.style.transform = ''; app.style.filter = '';
+      tears.innerHTML = ''; barsBox.innerHTML = '';
+      flash.style.opacity = '0';
+      face.style.transform = ''; face.style.opacity = ''; svg.style.filter = ''; txt.style.textShadow = '';
       g.classList.remove('show-face', 'visible');
+      root.classList.remove('force-motion');
       g.hidden = true;
-      g.querySelector('.bars').innerHTML = '';
     }
     try {
-      if (reduceMotion) {
+      if (!full) {
+        // Reduced motion: a gentle fade of the face, no shaking or flicker.
         g.hidden = false;
         g.classList.add('show-face');
         void g.offsetWidth;
@@ -834,17 +827,74 @@
         later(end, 2300);
         return;
       }
-      var bars = '', cols = ['#ff003c', '#00f0ff', '#ffffff', '#6d4aff', '#00ff66'];
-      for (var i = 0; i < 9; i++) {
-        bars += '<b style="top:' + (Math.random() * 100) + '%;height:' + (3 + Math.random() * 22) + 'px;background:' +
-          cols[i % cols.length] + ';animation-delay:-' + (Math.random() * .2) + 's"></b>';
+      if (glitchFlag === 'full') root.classList.add('force-motion');
+
+      // Visual copies of the current screen (ids stripped so nothing can target them).
+      var rect = app.getBoundingClientRect(), cs = getComputedStyle(app);
+      function copy(cls) {
+        var c = app.cloneNode(true);
+        c.removeAttribute('id');
+        c.querySelectorAll('[id]').forEach(function (n) { n.removeAttribute('id'); });
+        c.className = cls;
+        c.style.cssText = 'left:' + rect.left + 'px;top:' + rect.top + 'px;width:' + rect.width + 'px;padding:' + cs.padding;
+        tears.appendChild(c);
+        return c;
       }
-      g.querySelector('.bars').innerHTML = bars;
+      var red = copy('ghost red'), cyan = copy('ghost cyan'), slices = [];
+      for (var i = 0; i < 5; i++) slices.push(copy('slice'));
+
+      var cols = ['#ff003c', '#00f0ff', '#ffffff', '#6d4aff', '#00ff66', '#ffe600'];
+      var start = Date.now(), FACE_AT = 1600, END_AT = 2800;
+
+      function frame() {
+        var t = Date.now() - start, faceOn = t >= FACE_AT, k;
+        // Horizontal noise bars
+        var bars = '', nb = faceOn ? 3 : 7;
+        for (k = 0; k < nb; k++) {
+          bars += '<b style="top:' + rnd(0, 100) + '%;height:' + rnd(2, faceOn ? 10 : 34) + 'px;background:' +
+            cols[(Math.random() * cols.length) | 0] + ';opacity:' + rnd(.4, .95) + ';transform:translateX(' + rnd(-40, 40) + 'px)"></b>';
+        }
+        barsBox.innerHTML = bars;
+
+        if (!faceOn) {
+          // Shake + skew the real screen
+          app.style.transform = 'translate(' + rnd(-14, 14) + 'px,' + rnd(-7, 7) + 'px) skewX(' + rnd(-5, 5) + 'deg)';
+          app.style.filter = Math.random() < .14 ? 'invert(1) hue-rotate(' + rnd(0, 360) + 'deg)' : Math.random() < .3 ? 'contrast(1.8) saturate(2.5)' : '';
+          // RGB split ghosts
+          var dx = rnd(4, 16);
+          red.style.transform = 'translate(' + dx + 'px,' + rnd(-2, 2) + 'px)';
+          cyan.style.transform = 'translate(' + (-dx) + 'px,' + rnd(-2, 2) + 'px)';
+          // Torn slices
+          slices.forEach(function (sl) {
+            if (Math.random() < .35) { sl.style.visibility = 'hidden'; return; }
+            var top = rnd(0, 92), h = rnd(1.5, 12);
+            sl.style.visibility = 'visible';
+            sl.style.clipPath = 'inset(' + top + '% 0 ' + Math.max(0, 100 - top - h) + '% 0)';
+            sl.style.transform = 'translateX(' + rnd(-60, 60) + 'px)';
+          });
+          // White/magenta flash frames, plus a one-frame preview of the face
+          flash.style.background = Math.random() < .5 ? '#fff' : '#ff00aa';
+          flash.style.opacity = Math.random() < .08 ? '.85' : '0';
+          face.style.opacity = (t > 800 && t < 1450 && Math.random() < .12) ? '1' : '';
+        } else {
+          if (!g.classList.contains('show-face')) {
+            g.classList.add('show-face');
+            app.style.transform = ''; app.style.filter = '';
+            tears.innerHTML = ''; flash.style.opacity = '0'; face.style.opacity = '';
+          }
+          // Jittering face with RGB split; flicker out right before the snap back
+          var j = t > END_AT - 350 ? 10 : 4, sx = rnd(3, t > END_AT - 350 ? 14 : 7);
+          face.style.transform = 'translate(' + rnd(-j, j) + 'px,' + rnd(-j / 2, j / 2) + 'px)';
+          svg.style.filter = 'drop-shadow(' + sx + 'px 0 rgba(255,0,60,.85)) drop-shadow(' + (-sx) + 'px 0 rgba(0,240,255,.85))';
+          txt.style.textShadow = sx + 'px 0 #ff003c, ' + (-sx) + 'px 0 #00f0ff';
+          face.style.opacity = (t > END_AT - 250 && Math.random() < .4) ? '0' : '';
+        }
+        if (t >= END_AT) end();
+      }
       g.hidden = false;
-      root.classList.add('glitching');
-      later(function () { g.classList.add('show-face'); }, 1200);
-      later(function () { root.classList.remove('glitching'); }, 1300);
-      later(end, 2500);
+      frame();
+      frameTimer = setInterval(frame, 55);
+      later(end, END_AT + 400); // safety net
     } catch (e) { end(); }
   }
 
