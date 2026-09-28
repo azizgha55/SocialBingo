@@ -166,7 +166,7 @@
   #bingo { align-items: center; z-index: 60; background: rgba(20, 12, 45, .75); overflow: hidden; }
   #bingo .sheet { border-radius: 20px; text-align: center; margin: 12px; position: relative; z-index: 2; }
   .bingo-word {
-    font-size: clamp(3rem, 18vw, 5.5rem); font-weight: 900; line-height: 1; margin: 4px 0 8px;
+    font-size: clamp(2.2rem, 12vw, 4.6rem); white-space: nowrap; font-weight: 900; line-height: 1; margin: 4px 0 8px;
     background: linear-gradient(90deg, var(--accent), var(--win), var(--primary));
     -webkit-background-clip: text; background-clip: text; color: transparent;
     animation: pop .6s cubic-bezier(.2, 1.6, .4, 1);
@@ -179,7 +179,7 @@
   .mini span { width: 10px; height: 10px; border-radius: 2px; background: var(--line); }
   .mini span.on { background: var(--win); }
   .line-list { list-style: none; margin: 0; padding: 0; }
-  .line-list li { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: .92rem; }
+  .line-list li { display: flex; gap: 8px; padding: 3px 0; line-height: 1.25; border-bottom: 1px solid var(--line); font-size: .86rem; }
   .line-list li:last-child { border-bottom: 0; }
   .line-list .who { font-weight: 800; flex: none; max-width: 45%; overflow-wrap: anywhere; color: var(--filled-ink); }
   .line-list .what { color: var(--muted); flex: 1; overflow-wrap: anywhere; }
@@ -238,7 +238,7 @@
   <!-- ================= HOST ================= -->
   <section id="host" hidden>
     <h1><span class="logo">B</span>Social Bingo</h1>
-    <p class="lead">Write your prompts, share the QR code, and let people mingle to find a match for every square.</p>
+    <p class="lead">Blackout bingo: write your prompts, share the QR code, and let people mingle until they fill <strong>every</strong> square.</p>
 
     <div class="card">
       <label for="title">Game title <span class="hint">(optional)</span></label>
@@ -288,10 +288,10 @@
       <h1 id="gameTitle">Social Bingo</h1>
       <span class="progress" id="progress"></span>
     </div>
-    <p class="hint" style="margin:0 0 8px">Tap a square and write the name of someone who matches. One person per square!</p>
+    <p class="hint" style="margin:0 0 8px">Blackout! Fill <strong>every</strong> square to win. Tap a square and write the name of someone who matches — one person per square.</p>
     <div class="grid" id="grid"></div>
     <div class="toolbar">
-      <button type="button" class="btn small" id="showBingo" hidden>🎉 Show my bingo</button>
+      <button type="button" class="btn small" id="showBingo" hidden>🎉 Show my blackout</button>
       <span class="spacer"></span>
       <button type="button" class="btn small subtle" id="reset">Reset my card</button>
     </div>
@@ -329,10 +329,10 @@
 <div class="overlay" id="bingo" hidden>
   <div class="confetti" id="confetti"></div>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="bingoWord">
-    <div class="bingo-word" id="bingoWord">BINGO!</div>
+    <div class="bingo-word" id="bingoWord">BLACKOUT!</div>
     <p class="hint" style="margin:0">Show this to the host to verify.</p>
     <div id="bingoLines"></div>
-    <div class="actions"><button type="button" class="btn" id="bingoClose">Keep playing</button></div>
+    <div class="actions"><button type="button" class="btn" id="bingoClose">Close</button></div>
   </div>
 </div>
 
@@ -577,19 +577,11 @@
   /* ================= PLAYER MODE ================= */
   var game, size, N, FREE, key, state, lines;
 
+  // Blackout bingo: the only winning "line" is the whole card.
   function buildLines() {
-    var L = [], i, j;
-    for (i = 0; i < size; i++) {
-      var r = [], c = [];
-      for (j = 0; j < size; j++) { r.push(i * size + j); c.push(j * size + i); }
-      L.push({ id: 'r' + i, label: 'Row ' + (i + 1), cells: r });
-      L.push({ id: 'c' + i, label: 'Column ' + (i + 1), cells: c });
-    }
-    var d1 = [], d2 = [];
-    for (i = 0; i < size; i++) { d1.push(i * size + i); d2.push(i * size + (size - 1 - i)); }
-    L.push({ id: 'd0', label: 'Diagonal ↘', cells: d1 });
-    L.push({ id: 'd1', label: 'Diagonal ↙', cells: d2 });
-    return L;
+    var all = [];
+    for (var i = 0; i < N; i++) all.push(i);
+    return [{ id: 'all', label: 'Every square (' + (FREE >= 0 ? N - 1 : N) + ' people)', cells: all }];
   }
 
   function newState() {
@@ -680,7 +672,7 @@
     grid.innerHTML = html;
     var filled = 0, total = 0;
     for (var j = 0; j < N; j++) { if (j === FREE) continue; total++; if (state.names[j]) filled++; }
-    $('progress').textContent = filled + ' / ' + total;
+    $('progress').textContent = filled === total ? 'All ' + total + ' ★' : filled + ' / ' + total;
     $('showBingo').hidden = !completedLines().length;
     fitAll();
   }
@@ -761,16 +753,17 @@
       html += '<div class="line-block"><div class="line-head"><div class="mini" style="--n:' + size + '">' + mini +
         '</div><strong>' + esc(l.label) + '</strong></div><ul class="line-list">';
       l.cells.forEach(function (c) {
-        if (c === FREE) { html += '<li><span class="who">★ FREE</span><span class="what">Free square</span></li>'; return; }
+        if (c === FREE) return;
         html += '<li><span class="who">' + esc(state.names[c]) + '</span><span class="what">' + esc(game.q[state.cells[c]]) + '</span></li>';
       });
       html += '</ul></div>';
     });
-    $('bingoWord').textContent = list.length > 1 ? 'BINGO ×' + list.length + '!' : 'BINGO!';
+    $('bingoWord').textContent = 'BLACKOUT!';
     $('bingoLines').innerHTML = html;
     confetti();
     $('bingo').hidden = false;
-    $('bingoClose').focus();
+    $('bingo').querySelector('.sheet').scrollTop = 0;
+    $('bingoClose').focus({ preventScroll: true });
     if (navigator.vibrate && !reduceMotion) try { navigator.vibrate([80, 60, 160]); } catch (e) {}
   }
   function closeBingo() { $('bingo').hidden = true; $('confetti').innerHTML = ''; }
